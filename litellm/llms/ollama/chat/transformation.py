@@ -381,30 +381,25 @@ class OllamaChatConfig(BaseConfig):
         response_json = raw_response.json()
 
         ## RESPONSE OBJECT
-        model_response.choices[0].finish_reason = "stop"
-        response_json_message = response_json.get("message")
-        if response_json_message is not None:
-            if "thinking" in response_json_message:
-                # remap 'thinking' to 'reasoning_content'
-                response_json_message["reasoning_content"] = response_json_message[
-                    "thinking"
-                ]
-                del response_json_message["thinking"]
-            elif response_json_message.get("content") is not None:
-                # parse reasoning content from content
-                from litellm.litellm_core_utils.prompt_templates.common_utils import (
-                    _parse_content_for_reasoning,
-                )
+        # Use ResponseFieldExtractor to extract all fields INDEPENDENTLY
+        # This fixes the if/elif blocking issue where thinking + tool_calls
+        # couldn't be extracted simultaneously.
+        # Related issues: #18922 (qwen3), #18926 (opus thinking)
+        from litellm.litellm_core_utils.response_field_extractor import (
+            ResponseFieldExtractor,
+        )
 
-                reasoning_content, content = _parse_content_for_reasoning(
-                    response_json_message["content"]
-                )
-                response_json_message["reasoning_content"] = reasoning_content
-                response_json_message["content"] = content
+        response_json_message = response_json.get("message") or {}
+        extracted = ResponseFieldExtractor.extract_all(
+            message=response_json_message,
+            provider="ollama",
+        )
 
+        # Special case: JSON format with function_name (legacy tool calling)
         if (
             request_data.get("format", "") == "json"
             and litellm_params.get("function_name") is not None
+            and response_json_message.get("content")
         ):
             function_call = json.loads(response_json_message["content"])
             message = litellm.Message(
@@ -423,14 +418,20 @@ class OllamaChatConfig(BaseConfig):
                         "type": "function",
                     }
                 ],
-                reasoning_content=response_json_message.get("reasoning_content"),
+                reasoning_content=extracted.reasoning_content,
             )
             model_response.choices[0].message = message  # type: ignore
             model_response.choices[0].finish_reason = "tool_calls"
         else:
-
-            _message = litellm.Message(**response_json_message)
+            # Build message from extracted fields
+            # All fields are extracted independently - no blocking!
+            _message = litellm.Message(
+                content=extracted.content,
+                reasoning_content=extracted.reasoning_content,
+                tool_calls=extracted.tool_calls,
+            )
             model_response.choices[0].message = _message  # type: ignore
+            model_response.choices[0].finish_reason = extracted.finish_reason
         model_response.created = int(time.time())
         model_response.model = "ollama_chat/" + model
         prompt_tokens = response_json.get("prompt_eval_count", litellm.token_counter(messages=messages))  # type: ignore
