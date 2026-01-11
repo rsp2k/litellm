@@ -428,9 +428,12 @@ class OllamaChatConfig(BaseConfig):
             model_response.choices[0].message = message  # type: ignore
             model_response.choices[0].finish_reason = "tool_calls"
         else:
-
             _message = litellm.Message(**response_json_message)
             model_response.choices[0].message = _message  # type: ignore
+            # Set finish_reason to "tool_calls" when tool_calls are present
+            # Fixes: https://github.com/BerriAI/litellm/issues/18922
+            if _message.tool_calls:
+                model_response.choices[0].finish_reason = "tool_calls"
         model_response.created = int(time.time())
         model_response.model = "ollama_chat/" + model
         prompt_tokens = response_json.get("prompt_eval_count", litellm.token_counter(messages=messages))  # type: ignore
