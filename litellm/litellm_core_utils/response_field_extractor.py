@@ -71,6 +71,12 @@ class ResponseFieldExtractor:
     3. Handle provider-specific quirks transparently
     """
 
+    # Compiled regex patterns for performance
+    # Matches ALL <think>...</think> blocks (for extraction)
+    _THINK_TAG_PATTERN = re.compile(r"<think>(.*?)</think>", re.DOTALL)
+    # Matches <think>...</think> blocks with optional trailing whitespace (for removal)
+    _THINK_TAG_REMOVAL_PATTERN = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
     # Known fields that are handled specially
     KNOWN_FIELDS = {
         "content",
@@ -88,7 +94,7 @@ class ResponseFieldExtractor:
 
     @staticmethod
     def extract_all(
-        message: Dict[str, Any],
+        message: Optional[Dict[str, Any]],
         provider: str = "openai",
     ) -> ExtractedResponseFields:
         """
@@ -150,8 +156,8 @@ class ResponseFieldExtractor:
         if isinstance(content, str):
             # If we extracted reasoning from <think> tags, strip them from content
             if extracted_reasoning and "<think>" in content:
-                # Remove <think>...</think> block from content
-                content = re.sub(r"<think>.*?</think>\s*", "", content, flags=re.DOTALL)
+                # Remove ALL <think>...</think> blocks from content
+                content = ResponseFieldExtractor._THINK_TAG_REMOVAL_PATTERN.sub("", content)
                 content = content.strip()
                 return content if content else None
             return content
@@ -219,9 +225,10 @@ class ResponseFieldExtractor:
         content = message.get("content")
         if reasoning_content is None and isinstance(content, str):
             if "<think>" in content and "</think>" in content:
-                match = re.search(r"<think>(.*?)</think>", content, re.DOTALL)
-                if match:
-                    reasoning_content = match.group(1).strip()
+                # Extract ALL <think> blocks and concatenate them
+                matches = ResponseFieldExtractor._THINK_TAG_PATTERN.findall(content)
+                if matches:
+                    reasoning_content = "\n".join(m.strip() for m in matches)
 
         return reasoning_content, thinking_blocks
 

@@ -34,6 +34,9 @@ from litellm.types.llms.openai import (
     ChatCompletionUsageBlock,
 )
 from litellm.types.utils import ModelResponse, ModelResponseStream
+from litellm.litellm_core_utils.response_field_extractor import (
+    ResponseFieldExtractor,
+)
 
 from ..common_utils import OllamaError
 
@@ -385,10 +388,6 @@ class OllamaChatConfig(BaseConfig):
         # This fixes the if/elif blocking issue where thinking + tool_calls
         # couldn't be extracted simultaneously.
         # Related issues: #18922 (qwen3), #18926 (opus thinking)
-        from litellm.litellm_core_utils.response_field_extractor import (
-            ResponseFieldExtractor,
-        )
-
         response_json_message = response_json.get("message") or {}
         extracted = ResponseFieldExtractor.extract_all(
             message=response_json_message,

@@ -459,3 +459,33 @@ Step 2: Formulate response
         assert "Step 1" in result.reasoning_content
         assert "Step 2" in result.reasoning_content
         assert result.content == "Here is my answer."
+
+    def test_multiple_think_blocks(self):
+        """Test extraction of multiple <think> blocks in content."""
+        message = {
+            "role": "assistant",
+            "content": "<think>First thought</think>Let me also <think>reconsider this</think>Here is the answer.",
+        }
+        result = ResponseFieldExtractor.extract_all(message)
+        # Both thinking blocks should be extracted and concatenated
+        assert "First thought" in result.reasoning_content
+        assert "reconsider this" in result.reasoning_content
+        # Content should have both think blocks removed
+        assert result.content == "Let me also Here is the answer."
+        assert "<think>" not in result.content
+
+    def test_multiple_think_blocks_with_newlines(self):
+        """Test multiple <think> blocks separated by content with newlines."""
+        message = {
+            "role": "assistant",
+            "content": """<think>Initial analysis</think>
+Some text here.
+<think>Follow-up thought</think>
+Final answer.""",
+        }
+        result = ResponseFieldExtractor.extract_all(message)
+        assert "Initial analysis" in result.reasoning_content
+        assert "Follow-up thought" in result.reasoning_content
+        assert "Some text here" in result.content
+        assert "Final answer" in result.content
+        assert "<think>" not in result.content
